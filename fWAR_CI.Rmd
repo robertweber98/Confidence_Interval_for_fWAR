@@ -17,6 +17,7 @@ First, we need to find the stretch of years in a player's career that have, on a
 ## Data
 In this Rmd, "df" will be the full 50 year fangraphs data set and "rook_67" is the data set of the names of rookies in 1967.
 
+## Cleaning
 ```{r Cleaning}
 # get the names from a factor to a character
 as.character(df$Name) -> df$Name 
@@ -48,7 +49,7 @@ for(i in 1:length(name_67)) {
   df[which(df$Name != name_67[i]), ] -> df
 }
 ```
-
+## Investigation into the stretch of player's careers with the least variance from year to year.
 ```{r Variance Investigation}
 # now, let's narrow it down to players with at least 3 seasons on record
 qual_names <- df %>%
@@ -90,7 +91,7 @@ ggplot(df.sep, aes(x = Year_2, y = Avg_Difference)) +
   geom_point()
 ## year 5 to year 10 is pretty obviously the most consistent years
 ```
-
+## Computation
 ```{r Computation}
 # first we need players that played at least 10 years, so let's use the same method as earlier
 qual_names <- df %>%
@@ -126,4 +127,4 @@ df.ci <- df %>%
 
 mean(df.ci$CI_value)
 ```
-
+# The result is that the confidence interval for position player fWAR is +/- 0.87
