@@ -1,0 +1,129 @@
+---
+title: "CI for fWAR"
+author: "Rob Weber"
+date: "July 30, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+```
+
+# Confidence Interval for fWAR
+First, we need to find the stretch of years in a player's career that have, on average, the least amount variance. We will then sample randomly from a given number of these years and use combonatorial theory to find a confidence interval
+
+## Data
+In this Rmd, "df" will be the full 50 year fangraphs data set and "rook_67" is the data set of the names of rookies in 1967.
+
+```{r Cleaning}
+# get the names from a factor to a character
+as.character(df$Name) -> df$Name 
+
+# get the year of their career (kind of, for non-rookies in 67 it's weird right now)
+df <- df %>%
+  arrange(Season) %>%
+  group_by(Name) %>%
+  mutate(Season_Num = c(1:length(Name))) %>%
+  ungroup()
+# to get rid of player's half-careers, need to find all non-rookies in 1967
+## all the names from 1967
+df$Name[df$Season == 1967] -> name_67
+as.character(name_67) -> name_67
+## the names of the rookies from 1967
+rook_67$Name -> rook_67
+as.character(rook_67) -> rook_67
+## now we need to get a list of all the player's whose career didn't start in 1967
+for(i in 1:length(name_67)) {
+  if(name_67[i] %in% rook_67) {
+    NA -> name_67[i]
+  }
+}
+## now get rid of the NAs I created
+na.omit(name_67) -> name_67
+as.character(name_67) -> name_67
+## next is to get rid of all of the remaining players from the data set
+for(i in 1:length(name_67)) {
+  df[which(df$Name != name_67[i]), ] -> df
+}
+```
+
+```{r Variance Investigation}
+# now, let's narrow it down to players with at least 3 seasons on record
+qual_names <- df %>%
+  group_by(Name) %>%
+  summarise(Seasons = max(Season_Num)) %>%
+  filter(Seasons >= 3)
+qual_names$Name -> qual_names
+df <- df %>%
+  filter(Name %in% qual_names)
+# placeholder for the length of the career of the player in question
+career_length = 0
+# data frame to store results
+data.frame("Year_1" = 0, "Year_2" = 0, "Difference" = 0) -> var.df
+# data frame to store results for each player inside the loop
+for(i in qual_names) {
+  # need to grab all the rows of data for the player in question
+  df[which(df$Name == i), ] -> df_player
+  # need to get the length of his career 
+  max(df_player$Season_Num) -> career_length
+  # now we need to get a df that we can grab two different years out of
+  data.frame("Year_1" = c(1:(career_length - 1)), "Year_2" = c(2:career_length), "Difference" = 0) -> var.df_player
+  # now to get the difference in WARs between the two years specified
+  for(j in c(1:length(var.df_player$Year_1))) {
+    abs(df_player$WAR[df_player$Season_Num == var.df_player$Year_1[j]] - 
+          df_player$WAR[df_player$Season_Num == var.df_player$Year_2[j]]) -> var.df_player$Difference[j]
+  }
+  # now to combine this with the rest of the data
+  rbind(var.df, var.df_player) -> var.df
+}
+# have to get rid of that empty 1st row quick
+var.df[which(var.df$Year_1 != 0), ] -> var.df
+
+# now to check which chunks of time have the least variance 
+## need
+df.sep <- var.df %>%
+  group_by(Year_1, Year_2) %>%
+  summarise(Avg_Difference = mean(Difference)) 
+ggplot(df.sep, aes(x = Year_2, y = Avg_Difference)) +
+  geom_point()
+## year 5 to year 10 is pretty obviously the most consistent years
+```
+
+```{r Computation}
+# first we need players that played at least 10 years, so let's use the same method as earlier
+qual_names <- df %>%
+  group_by(Name) %>%
+  summarise(Seasons = max(Season_Num)) %>%
+  filter(Seasons >= 10)
+qual_names$Name -> qual_names
+df <- df %>%
+  filter(Name %in% qual_names)
+# now to just get years 5 through 10
+df <- df %>%
+  filter(Season_Num >= 5 & Season_Num <= 10)
+
+# next, we need to normalize the WARs in respect to the season number
+## this gets the average WAR at each season number 5-10
+year_means <- df %>%
+  group_by(Season_Num) %>%
+  summarise(Mean = mean(WAR))
+## this gets the mean that can be used to adjust and center the player WARs
+year_means$Mean_adj <- year_means$Mean / mean(df$WAR)
+# just gets the respective adjusting constant to each player's row that corresponds to their season number
+left_join(df, year_means[ , c(1, 3)], by = "Season_Num") -> df
+
+# This gets a column of player's normalized WAR values in respect to season number
+df <- df %>%
+  group_by(Season_Num) %>%
+  mutate(WAR_normal = WAR / Mean_adj)
+# now, to get a confidence interval, we will use a manual sampling method to find a 94% CI through combinatorial probability calculations under the assumption that 3 random years of the 6 possible years are being taken and the average is being found.
+df.ci <- df %>%
+  arrange(Name, WAR_normal) %>%
+  group_by(Name) %>%
+  summarise(CI_value = (WAR_normal[5] - WAR_normal[2]) / 2) 
+
+mean(df.ci$CI_value)
+```
+
