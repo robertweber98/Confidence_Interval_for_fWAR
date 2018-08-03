@@ -127,4 +127,4 @@ df.ci <- df %>%
 
 mean(df.ci$CI_value)
 ```
-# The result is that the confidence interval for position player fWAR is +/- 0.87
+#### The result is that the confidence interval for position player fWAR is +/- 0.87
